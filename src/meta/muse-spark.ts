@@ -5,7 +5,7 @@ import type { ChatCompletionChunk, ChatCompletionMessageParam, ChatCompletionToo
  * Muse Spark on Meta's OpenAI-compatible Chat Completions endpoint (https://dev.meta.ai/docs/protocols/chat-completions),
  * streamed, with tools.
  *
- * What a phone call needs from it, and what we learned getting there (docs/benchmarks/muse-spark-for-voice.md):
+ * What a phone call needs from it, and what we learned running it on live calls:
  * - Muse Spark always reasons, and every reasoning token is silence on the line. `reasoning_effort: "minimal"` is the
  *   floor ("none" is a 400). On muse-spark-1.2 it gives 0.6–1.5 s to the first token; the default effort up to 3.6 s.
  * - The field is the top-level `reasoning_effort`. OpenRouter's `reasoning: { effort }` is refused:

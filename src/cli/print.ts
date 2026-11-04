@@ -5,7 +5,6 @@ const ms = (n: number | null) => (n === null ? "–" : `${Math.round(n)} ms`);
 
 /** One receptionist turn: tool calls with their answers, then what is said, then the timings. */
 export function printTurn(r: TurnResult): void {
-  if (r.switchedLanguage) console.log(dim(`  ↪ caller's words are ${r.language === "en" ? "Latin" : "Cyrillic"}: call switched to ${r.language}`));
   for (const [i, round] of r.rounds.entries()) {
     if (round.text && i < r.rounds.length - 1) console.log(`  agent › ${round.text}`);
     for (const t of round.toolCalls) {

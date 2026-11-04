@@ -28,20 +28,24 @@ Your World_).
   reading the name, day and time back and hearing a clear yes.
 - **No silence during tool calls.** Muse Spark starts each tool turn with a short echo of the request ("A brake
   inspection tomorrow afternoon, I'll check what we have."), which is spoken while the tool runs.
-- **The call follows the caller's language.** Muse Voice Transcribe code-switches, so the receptionist switches language
-  from the caller's first sentence without reopening the stream ([`src/language.ts`](src/language.ts)).
 
 ## Run it
 
-You need Node 22+, pnpm and a [Meta Model API key](https://dev.meta.ai).
+You need Node 22+, pnpm and a [Meta Model API key](https://dev.meta.ai). For the browser demo, also an
+[ElevenLabs](https://elevenlabs.io) key and voice: Meta has no text-to-speech model, so the receptionist's voice is
+ElevenLabs Eleven v4, as on our live lines.
 
 ```bash
 pnpm install
-cp .env.example .env                     # add META_MODEL_API_KEY
+cp .env.example .env                   # add META_MODEL_API_KEY (and the ElevenLabs keys for the demo)
 
-pnpm call samples/en-tyre-change/*.wav   # a recorded caller: audio → Muse Voice Transcribe → Muse Spark → booking
-pnpm chat                                # be the caller: type your lines
+pnpm demo                              # the khairo.ai/demo page on this pipeline: http://localhost:3000
+pnpm call samples/oil-change/*.wav     # a recorded caller: audio → Muse Voice Transcribe → Muse Spark → booking
+pnpm chat                              # be the caller: type your lines
 ```
+
+`pnpm demo` is the same call as [khairo.ai/demo](https://khairo.ai/demo): talk into your microphone, and the page
+shows what Muse heard, every tool call and the timing of each step.
 
 `pnpm call` streams each WAV as one caller turn, at real time in 20 ms frames like a phone line. It prints what Muse
 heard, every tool call and its answer, what the receptionist says, and the timing of each turn. Any 16-bit PCM WAV
@@ -61,6 +65,8 @@ receptionist's voice: **1.86 s at the median**, through telephony, at about 5¢ 
 | [`src/meta/`](src/meta) | The Muse Voice Transcribe and Muse Spark clients |
 | [`src/receptionist.ts`](src/receptionist.ts) | The receptionist: prompt, tool loop, language following |
 | [`src/calendar.ts`](src/calendar.ts) | A demo car service and its calendar behind the three booking tools |
+| [`src/demo/`](src/demo) | The browser demo: the page and its server |
+| [`src/tts/`](src/tts) | The ElevenLabs voice |
 | [`src/cli/`](src/cli) | `call` (WAV → full pipeline) and `chat` (text) |
 | [`samples/`](samples) | Synthetic caller turns |
 

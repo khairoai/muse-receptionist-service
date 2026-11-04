@@ -1,19 +1,12 @@
 import type OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
-import { BUSINESS, Calendar } from "./calendar.ts";
-import { decideLanguage, lettersByLanguage, scriptsOf, withoutAddresses, wordCount } from "./language.ts";
+import { BUSINESS, Calendar, TIME_ZONE } from "./calendar.ts";
 import { streamSpark, type SparkUsage, type ToolCall } from "./meta/muse-spark.ts";
 
-export type Language = "bg" | "en";
-const LANGUAGES: Language[] = ["bg", "en"];
-const LANGUAGE_NAMES: Record<Language, string> = { bg: "Bulgarian", en: "English" };
 /** Model rounds per caller turn: speak, call a tool, speak about its answer, … */
 const MAX_ROUNDS = 4;
 
-export const GREETING: Record<Language, string> = {
-  bg: `${BUSINESS.name.bg}, добър ден! С какво мога да помогна?`,
-  en: `${BUSINESS.name.en}, hello! How can I help?`,
-};
+export const GREETING = `${BUSINESS.name}, hello! How can I help?`;
 
 export interface Round {
   firstTokenMs: number | null;
@@ -26,37 +19,35 @@ export interface Round {
 export interface TurnResult {
   /** What the receptionist says, in order (text before a tool call, then after its answer). */
   spoken: string;
-  language: Language;
-  switchedLanguage: boolean;
   rounds: Round[];
 }
 
+/** As a turn happens: each line to say as soon as its round ends (so the echo plays while the tool runs), each tool. */
+export interface TurnListener {
+  say?: (text: string) => void;
+  tool?: (t: Round["toolCalls"][number]) => void;
+}
+
 /**
- * One phone call's receptionist on Muse Spark: the caller's words in, what to say out. Follows the caller's language
- * by the script of their words (language.ts), and books only through the calendar's tools.
+ * One phone call's receptionist on Muse Spark: the caller's words in, what to say out. Books only through the
+ * calendar's tools.
  */
 export class Receptionist {
   private readonly messages: ChatCompletionMessageParam[] = [];
-  private language: Language;
-  private callerTurns = 0;
-  private readonly scripts = scriptsOf(LANGUAGES);
 
   constructor(
     private readonly client: OpenAI,
     private readonly calendar: Calendar,
-    private readonly opts: { model?: string; language?: Language } = {},
+    private readonly opts: { model?: string } = {},
   ) {
-    this.language = opts.language ?? "bg";
-    this.messages.push({ role: "assistant", content: GREETING[this.language] });
+    this.messages.push({ role: "assistant", content: GREETING });
   }
 
   get greeting(): string {
-    return GREETING[this.language];
+    return GREETING;
   }
 
-  async reply(callerText: string): Promise<TurnResult> {
-    const switchedLanguage = this.followLanguage(callerText);
-    this.callerTurns++;
+  async reply(callerText: string, listener: TurnListener = {}): Promise<TurnResult> {
     this.messages.push({ role: "user", content: callerText });
 
     const rounds: Round[] = [];
@@ -71,7 +62,10 @@ export class Receptionist {
         else Object.assign(round, { firstTokenMs: ev.firstTokenMs, totalMs: ev.totalMs, usage: ev.usage });
       }
       round.text = round.text.trim();
-      if (round.text) spoken.push(round.text);
+      if (round.text) {
+        spoken.push(round.text);
+        listener.say?.(round.text);
+      }
       this.messages.push({
         role: "assistant",
         content: round.text,
@@ -80,35 +74,24 @@ export class Receptionist {
       for (const call of calls) {
         const started = performance.now();
         const result = this.calendar.run(call);
-        round.toolCalls.push({ call, result, ms: performance.now() - started });
+        const done = { call, result, ms: performance.now() - started };
+        round.toolCalls.push(done);
+        listener.tool?.(done);
         this.messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
       }
       rounds.push(round);
       if (!calls.length) break;
     }
-    return { spoken: spoken.join(" "), language: this.language, switchedLanguage, rounds };
+    return { spoken: spoken.join(" "), rounds };
   }
 
-  /** Switch the call's language when the caller's words are clearly in the other script. */
-  private followLanguage(text: string): boolean {
-    if (!this.scripts) return false;
-    const clean = withoutAddresses(text);
-    const next = decideLanguage({ letters: lettersByLanguage(clean, this.scripts), words: wordCount(clean), current: this.language, firstTurn: this.callerTurns === 0 });
-    if (!next || next === this.language) return false;
-    this.language = next as Language;
-    return true;
-  }
-
-  /** The prompt for the call as it is now (language, today). */
+  /** The prompt for the call as it is now (today's date). */
   systemPrompt(): string {
     const { date, weekday } = this.calendar.today();
-    const lang = LANGUAGE_NAMES[this.language];
-    const services = BUSINESS.services.map((s) => `- ${s.id}: ${s.bg} / ${s.en}, ${s.minutes} min, €${s.priceEur}`).join("\n");
-    return `You are the receptionist of ${BUSINESS.name.en} (${BUSINESS.name.bg}), a car service at ${BUSINESS.address.en}. You are on a phone call: everything you write is spoken aloud by a voice, so write only words to be said.
+    const services = BUSINESS.services.map((s) => `- ${s.id}: ${s.name}, ${s.minutes} min, $${s.priceUsd}`).join("\n");
+    return `You are the receptionist of ${BUSINESS.name}, a car service in ${BUSINESS.place}. You are on a phone call: everything you write is spoken aloud by a voice, so write only words to be said.
 
-Today is ${weekday}, ${date} (Europe/Sofia).
-
-The call is in ${lang}. Reply in ${lang} only, even if earlier turns were in another language. Don't comment on the language.
+Today is ${weekday}, ${date} (${TIME_ZONE}).
 
 How to speak:
 - One or two short sentences per reply, and one question at a time. No lists, markdown, emoji or symbols.
@@ -116,10 +99,10 @@ How to speak:
 - Never invent prices, opening hours, services or free times. Everything you know is below or comes from a tool. If you don't know, say you will pass the question to the team.
 - When you need a tool, start your reply with a short echo of what the caller just gave you, with their specifics ("An oil change tomorrow morning."), then call the tool in the same reply. It is spoken while the tool runs, so the caller never waits in silence. Never a generic filler without their specifics ("one moment", "hold on").
 
-Services (id: Bulgarian / English name, duration, price):
+Services (id: name, duration, price):
 ${services}
 
-Opening hours: Monday to Friday 9:00 to 18:00, Saturday 9:00 to 13:00, closed on Sunday.
+Opening hours: ${BUSINESS.hoursSpoken}.
 
 Booking, in this order:
 1. Know the service and the day. Then call find_slots, resolving words like "tomorrow" or "next Friday" against today's date.

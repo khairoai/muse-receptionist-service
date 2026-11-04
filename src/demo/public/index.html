@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Receptionist Live Demo — Khairo on Meta Muse</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" />
+    <style>
+      :root {
+        --bg: oklch(0.17 0.03 165);
+        --card: oklch(0.2 0.035 165);
+        --primary: oklch(0.8 0.15 158);
+        --primary-ink: oklch(0.2 0.04 165);
+        --muted: oklch(0.72 0.02 160);
+        --line: oklch(1 0 0 / 0.12);
+        --danger: oklch(0.62 0.19 25);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Manrope, system-ui, sans-serif;
+        color: white;
+        background: radial-gradient(70% 50% at 70% 0%, oklch(0.32 0.08 162 / 0.6), transparent 70%), var(--bg);
+      }
+      main {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 48px 24px 64px;
+        display: grid;
+        gap: 40px 64px;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 480px);
+        align-items: start;
+      }
+      @media (max-width: 960px) { main { grid-template-columns: 1fr; padding-top: 24px; } }
+      .eyebrow { margin: 24px 0 16px; font-size: 14px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: oklch(0.85 0.1 160 / 0.8); }
+      h1 { margin: 0; font-size: clamp(38px, 5.4vw, 62px); font-weight: 800; line-height: 1.04; letter-spacing: -0.03em; }
+      mark { background: linear-gradient(90deg, oklch(0.85 0.13 160), oklch(0.9 0.09 160), oklch(0.88 0.08 185)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      .lead { margin: 24px 0 0; max-width: 36rem; font-size: 19px; line-height: 1.6; color: var(--muted); }
+      .promises { margin: 36px 0 0; padding: 0; list-style: none; display: grid; gap: 12px; grid-template-columns: 1fr 1fr; max-width: 36rem; }
+      .promises li { display: flex; gap: 12px; font-size: 15.5px; line-height: 1.35; color: oklch(1 0 0 / 0.9); }
+      .promises li::before { content: "✓"; flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 99px; background: oklch(0.8 0.15 158 / 0.15); color: var(--primary); font-size: 12px; font-weight: 800; }
+      .facts { margin-top: 40px; display: grid; gap: 16px; grid-template-columns: 1fr 1fr; max-width: 36rem; }
+      .fact { border: 1px solid var(--line); border-radius: 20px; padding: 18px 20px; background: oklch(1 0 0 / 0.03); }
+      .fact h2 { margin: 0 0 10px; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--primary); }
+      .fact p { margin: 4px 0; display: flex; justify-content: space-between; gap: 12px; font-size: 14.5px; }
+      .fact p span:first-child { color: var(--muted); }
+
+      .card { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 30px; background: radial-gradient(90% 55% at 50% 0%, oklch(0.42 0.1 160 / 0.45), transparent 75%), var(--card); box-shadow: 0 50px 100px -50px oklch(0.1 0.04 165); }
+      .card header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 24px 28px 0; }
+      .card header b { display: block; font-size: 18px; font-weight: 800; }
+      .card header small { color: var(--muted); font-size: 13px; }
+      .pill { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 99px; border: 1px solid oklch(0.8 0.15 158 / 0.3); background: oklch(0.8 0.15 158 / 0.1); color: var(--primary); font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+      .pill::before { content: ""; width: 6px; height: 6px; border-radius: 99px; background: var(--primary); }
+      .body { padding: 8px 28px 28px; display: flex; flex-direction: column; }
+      canvas { display: block; margin: 0 auto; width: 224px; aspect-ratio: 1; }
+      .legend { display: flex; justify-content: center; gap: 16px; font-size: 12.5px; font-weight: 600; color: oklch(1 0 0 / 0.45); }
+      .legend span { display: flex; align-items: center; gap: 6px; transition: color 0.2s; }
+      .legend i { width: 6px; height: 6px; border-radius: 99px; background: oklch(1 0 0 / 0.4); }
+      .legend [data-on] { color: white; }
+      .legend [data-on] i { background: white; }
+      .legend .them[data-on] { color: var(--primary); }
+      .legend .them[data-on] i { background: var(--primary); }
+      .status { margin-top: 12px; min-height: 52px; text-align: center; }
+      .status b { display: block; font-size: 16px; }
+      .status small { display: block; margin-top: 4px; font-size: 14px; color: var(--muted); }
+      .status .error { color: oklch(0.82 0.1 28); font-weight: 500; }
+      button { margin-top: 20px; height: 56px; width: 100%; border: 0; border-radius: 16px; font: 700 16px Manrope, system-ui, sans-serif; cursor: pointer; background: var(--primary); color: var(--primary-ink); box-shadow: 0 18px 40px -18px oklch(0.8 0.15 158 / 0.7); }
+      button:hover { filter: brightness(1.1); }
+      button.hangup { background: var(--danger); color: white; box-shadow: none; }
+      .note { margin: 16px 0 0; font-size: 13px; line-height: 1.6; color: var(--muted); }
+
+      .log { margin: 0; border-top: 1px solid var(--line); padding: 18px 28px 24px; max-height: 360px; overflow-y: auto; font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .log h2 { margin: 0 0 10px; font: 700 12px Manrope, system-ui, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: var(--primary); }
+      .log p { margin: 0 0 6px; overflow-wrap: anywhere; }
+      .log .who { color: var(--muted); }
+      .log .caller { color: white; }
+      .log .agent { color: var(--primary); }
+      .log .meta { color: oklch(1 0 0 / 0.45); }
+      .log .partial { color: oklch(1 0 0 / 0.55); font-style: italic; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section>
+        <p class="eyebrow">AI receptionist live demo</p>
+        <h1>Talk to our AI receptionist, <mark>live.</mark></h1>
+        <p class="lead">
+          Golden Gate Auto Care is a demo car service in San Francisco. Ask about prices and hours, then book an appointment in its
+          calendar.
+        </p>
+        <ul class="promises">
+          <li>Picks up on the first ring, day or night</li>
+          <li>Quotes your real prices and hours</li>
+          <li>Books into the calendar as you talk</li>
+          <li>Reads every booking back before confirming</li>
+        </ul>
+        <div class="facts">
+          <div class="fact">
+            <h2>Hours (Pacific Time)</h2>
+            <p><span>Monday–Friday</span><span>8 am–6 pm</span></p>
+            <p><span>Saturday</span><span>9 am–2 pm</span></p>
+            <p><span>Sunday</span><span>Closed</span></p>
+          </div>
+          <div class="fact">
+            <h2>Services</h2>
+            <p><span>Oil change</span><span>$79</span></p>
+            <p><span>Tire rotation</span><span>$39</span></p>
+            <p><span>Brake inspection</span><span>$49</span></p>
+            <p><span>Check-engine light</span><span>$99</span></p>
+            <p><span>Smog check</span><span>$59</span></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" aria-label="Call the receptionist">
+        <header>
+          <div>
+            <b>Golden Gate Auto Care</b>
+            <small>San Francisco · Pacific Time</small>
+          </div>
+          <span class="pill">Live · English</span>
+        </header>
+        <div class="body">
+          <canvas id="orb" aria-hidden="true"></canvas>
+          <p class="legend" aria-hidden="true">
+            <span id="you"><i></i>You</span>
+            <span id="them" class="them"><i></i>Receptionist</span>
+          </p>
+          <div class="status" role="status" aria-live="polite">
+            <b id="status">Ready when you are.</b>
+            <small id="hint">Your browser will ask to use the microphone.</small>
+          </div>
+          <button id="call" type="button">Talk to the receptionist</button>
+          <p class="note">
+            Runs on this machine: Muse Voice Transcribe hears you, Muse Spark answers and books, and ElevenLabs gives it a
+            voice. Headphones work best.
+          </p>
+        </div>
+        <div class="log" id="log" aria-live="off">
+          <h2>On the line</h2>
+          <p class="meta">Start a call to see what Muse hears, every tool call and how long each step takes.</p>
+        </div>
+      </section>
+    </main>
+    <script src="/demo.js" type="module"></script>
+  </body>
+</html>

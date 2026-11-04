@@ -10,7 +10,7 @@
   "scripts": {
     "chat": "tsx src/cli/chat.ts",
     "call": "tsx src/cli/call.ts",
-    "bench:spark": "tsx src/cli/bench-spark.ts",
+    "demo": "tsx src/demo/server.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -8,7 +8,6 @@ import { printTurn } from "./print.ts";
 /**
  * Talk to the receptionist by typing, as the caller: Muse Spark and the booking tools, no audio.
  *   pnpm chat
- * Write in Bulgarian or English; the call follows the script of your words.
  */
 async function main(): Promise<void> {
   const receptionist = new Receptionist(createSparkClient(metaApiKey()), new Calendar(), { model: sparkModel() });

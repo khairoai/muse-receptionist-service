@@ -11,7 +11,7 @@ import { printTurn } from "./print.ts";
  * A phone call from WAV files: each file is one caller turn, played after the receptionist has answered the previous
  * one. Audio goes to Muse Voice Transcribe in 20 ms frames at real time, with silence in between, as a phone line
  * delivers it; Muse's end of turn hands the text to Muse Spark.
- *   pnpm call samples/bg-oil-change/*.wav
+ *   pnpm call samples/oil-change/*.wav
  */
 const FRAME_MS = 20;
 const FRAME_BYTES = (16000 * 2 * FRAME_MS) / 1000;
@@ -67,7 +67,7 @@ interface TurnTiming {
 async function main(): Promise<void> {
   const files = process.argv.slice(2).filter((a) => a !== "--");
   if (!files.length) {
-    console.error("usage: pnpm call <turn1.wav> [turn2.wav …]   (e.g. pnpm call samples/bg-oil-change/*.wav)");
+    console.error("usage: pnpm call <turn1.wav> [turn2.wav …]   (e.g. pnpm call samples/oil-change/*.wav)");
     process.exit(1);
   }
   const apiKey = metaApiKey();
@@ -75,7 +75,7 @@ async function main(): Promise<void> {
   const receptionist = new Receptionist(createSparkClient(apiKey), calendar, { model: sparkModel() });
 
   const opening = performance.now();
-  const stt = await openTranscribeStream({ apiKey, languageBias: "Bulgarian", keywords: calendar.keyterms() });
+  const stt = await openTranscribeStream({ apiKey, languageBias: "English", keywords: calendar.keyterms() });
   console.log(`\x1b[2mmuse-voice-transcribe: session open in ${Math.round(performance.now() - opening)} ms\x1b[0m`);
   stt.on("error", (err) => console.error(`stt error: ${err.message}`));
   const pump = new LinePump(stt);

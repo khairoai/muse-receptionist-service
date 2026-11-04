@@ -2,33 +2,35 @@ import type { ChatCompletionTool } from "openai/resources/chat/completions";
 import type { ToolCall } from "./meta/muse-spark.ts";
 
 /**
- * A demo car service and its calendar, in memory. In production the same three tools go to our bookings service, which
- * checks every call against the business's rules; here they are enough to book a real-looking appointment end to end.
+ * Golden Gate Auto Care, the demo car service behind khairo.ai/demo, and its calendar, in memory. The services, prices,
+ * durations and hours are the live demo's. In production the same three tools go to our bookings service, which checks
+ * every call against the business's rules; here they are enough to book a real-looking appointment end to end.
  *
  * The model never makes up a slot: `hold_slot` only takes a slot id that `find_slots` returned on this call, and
  * `service` is an enum of the catalog's ids. Every answer has a status (SLOTS, NO_SLOTS, HELD, TAKEN, CONFIRMED, NEEDS)
  * that the prompt tells the model how to handle.
  */
-export const TIME_ZONE = "Europe/Sofia";
+export const TIME_ZONE = "America/Los_Angeles";
 
 export interface Service {
   id: string;
-  bg: string;
-  en: string;
+  name: string;
   minutes: number;
-  priceEur: number;
+  priceUsd: number;
 }
 
 export const BUSINESS = {
-  name: { bg: "Автосервиз Демо", en: "Demo Car Service" },
-  address: { bg: "ул. Примерна 1, София", en: "1 Primerna St, Sofia" },
+  name: "Golden Gate Auto Care",
+  place: "San Francisco, California",
   /** Weekday (0 = Sunday) → opening and closing time. */
-  hours: { 1: ["09:00", "18:00"], 2: ["09:00", "18:00"], 3: ["09:00", "18:00"], 4: ["09:00", "18:00"], 5: ["09:00", "18:00"], 6: ["09:00", "13:00"] } as Record<number, [string, string]>,
+  hours: { 1: ["08:00", "18:00"], 2: ["08:00", "18:00"], 3: ["08:00", "18:00"], 4: ["08:00", "18:00"], 5: ["08:00", "18:00"], 6: ["09:00", "14:00"] } as Record<number, [string, string]>,
+  hoursSpoken: "Monday to Friday 8 am to 6 pm, Saturday 9 am to 2 pm, closed on Sunday",
   services: [
-    { id: "oil_change", bg: "Смяна на масло", en: "Oil change", minutes: 45, priceEur: 60 },
-    { id: "diagnostics", bg: "Компютърна диагностика", en: "Computer diagnostics", minutes: 30, priceEur: 30 },
-    { id: "tyre_change", bg: "Смяна на гуми", en: "Tyre change", minutes: 30, priceEur: 25 },
-    { id: "brake_pads", bg: "Смяна на накладки", en: "Brake pad replacement", minutes: 60, priceEur: 70 },
+    { id: "oil_change", name: "Oil change", minutes: 45, priceUsd: 79 },
+    { id: "tire_rotation", name: "Tire rotation", minutes: 30, priceUsd: 39 },
+    { id: "brake_inspection", name: "Brake inspection", minutes: 30, priceUsd: 49 },
+    { id: "check_engine_diagnostic", name: "Check-engine-light diagnostic", minutes: 60, priceUsd: 99 },
+    { id: "smog_check", name: "California smog check", minutes: 30, priceUsd: 59 },
   ] satisfies Service[],
 };
 
@@ -77,7 +79,7 @@ export class Calendar {
 
   /** Words the speech-to-text should hear right: the catalog plus booking words. */
   keyterms(): string[] {
-    return [BUSINESS.name.bg, ...BUSINESS.services.map((s) => s.bg), "час", "запиша", "запазя", "масло", "гуми", "накладки"];
+    return [BUSINESS.name, ...BUSINESS.services.map((s) => s.name), "appointment", "smog check", "check engine light"];
   }
 
   tools(): ChatCompletionTool[] {
@@ -200,7 +202,7 @@ export class Calendar {
       return { status: "TAKEN", message: "that slot was just taken", slots: this.offer(service, date, "any") };
     }
     this.hold = { slotId, name, service, date, time };
-    return { status: "HELD", name, service: service.id, date, weekday: weekdayName(date), time, minutes: service.minutes, priceEur: service.priceEur };
+    return { status: "HELD", name, service: service.id, date, weekday: weekdayName(date), time, minutes: service.minutes, priceUsd: service.priceUsd };
   }
 
   private confirmBooking(callerConfirmed: boolean): Record<string, unknown> {

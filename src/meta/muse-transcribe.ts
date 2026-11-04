@@ -7,15 +7,12 @@ import WebSocket from "ws";
  * ENDPOINTING mode: the model decides where each caller turn ends and sends `speechComplete` with the turn's final
  * text. Partials are cumulative per turn. There are no word timings, so a turn's "last word" is the stream time of the
  * last partial whose text changed.
- *
- * Bulgarian is not on Meta's verified language list but works well: on our real calls it made a third fewer errors
- * than Deepgram Nova-3 and ended a turn ~0.4 s after the last word (docs/benchmarks/muse-transcribe-vs-deepgram.md).
  */
 export interface MuseTranscribeOptions {
   apiKey: string;
   /** Default "muse-voice-transcribe-1.0". */
   model?: string;
-  /** English name of the language to favour ("Bulgarian"). Other languages still come back in their own words. */
+  /** English name of the language to favour ("English"). Other languages still come back in their own words. */
   languageBias?: string;
   /** Words the business needs heard right: its services, staff, booking words. */
   keywords?: string[];
@@ -165,7 +162,7 @@ export class TranscribeStream extends EventEmitter<TranscribeEvents> {
       case "speechComplete": {
         const text = typeof ev.transcript === "string" ? ev.transcript.trim() : "";
         this.partial = "";
-        // An empty final happens: a short "Да" on a noisy line can come back with no words at all.
+        // An empty final happens: a short "yes" on a noisy line can come back with no words at all.
         this.emit("final", { text, lastChangeMs: this.partialChangedMs });
         return;
       }
