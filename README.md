@@ -40,13 +40,13 @@ flowchart LR
 
 ## What we built for the hackathon
 
-Khairo existed before the hackathon. We started on Meta's models the evening before kickoff (Oct 25), with
-speech-to-text, and built the rest during the event (Oct 27 – Nov 4). This repo was extracted from our private
-monorepo on Nov 4, so its history starts that day: everything in it is the Meta work below.
+Khairo existed before the hackathon. We started on Meta's models on Oct 27, the hackathon's first day, with
+speech-to-text (Muse Voice Transcribe), and built the rest during the event (Oct 27 – Nov 4). This repo was extracted
+from our private monorepo on Nov 4, so its history starts that day: everything in it is the Meta work below.
 
 | Date                    | Built                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Where                                                                    |
 |-------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
-| Oct 25–26, before kickoff | **Muse Voice Transcribe as the receptionist's ears.** Meta's realtime speech-to-text: the caller's audio streams over its WebSocket in 20 ms frames (endpointing mode, keywords biased to the business's services), and it returns the words and decides when the caller's turn has ended. We benchmarked it on our real Bulgarian calls before switching: 20% vs 30% word errors against Deepgram Nova-3, and every booking-critical word right | [`src/meta/muse-transcribe.ts`](src/meta/muse-transcribe.ts), production |
+| Oct 27, first day of the hackathon | **Muse Voice Transcribe as the receptionist's ears — the first thing we built for the event.** Meta's realtime speech-to-text: the caller's audio streams over its WebSocket in 20 ms frames (endpointing mode, keywords biased to the business's services), and it returns the words and decides when the caller's turn has ended. We benchmarked it on our real Bulgarian calls that day, before switching: 20% vs 30% word errors against Deepgram Nova-3, and every booking-critical word right | [`src/meta/muse-transcribe.ts`](src/meta/muse-transcribe.ts), production |
 | Nov 2–3                 | **Muse Spark as the receptionist's brain.** The streaming client with tools and `reasoning_effort`, an evaluation of Muse Spark 1.2 and 1.3 at three effort levels (right tool and inputs in 36 of 36 tries), then every live receptionist moved onto it                                                                                                                                                                                                     | [`src/meta/muse-spark.ts`](src/meta/muse-spark.ts), production           |
 | Nov 2                   | **Following the caller's language with Muse Voice Transcribe's code-switching.** English speech on a stream biased to Bulgarian comes back as English words, so the call switches language from the caller's first sentence without reopening the stream. On Nov 4 we found it works the other way too: Bulgarian on this repo's English line comes back in Cyrillic                                                                                    | [`src/language.ts`](src/language.ts), production                         |
 | Nov 4                   | **Turns that don't wait in silence.** Muse Spark echoes the caller's request while a tool runs; in production, Meta's Llama 3.3 writes a two-word acknowledgement in parallel when Muse Spark goes straight to a tool. Also: one question per turn, two offered times, today's date in context, and hanging up on a silent line                                                                                                                             | [`src/receptionist.ts`](src/receptionist.ts), production                 |
@@ -132,7 +132,7 @@ caller › No, Friday won't work, I need it Thursday morning and need the car ba
 
 ## Benchmarks
 
-**Muse Voice Transcribe vs Deepgram Nova-3, Oct 25** (with our production code, before kickoff). 5 real Bulgarian phone calls (536 s, 32 caller turns, made by our
+**Muse Voice Transcribe vs Deepgram Nova-3, Oct 27** (the first work for the hackathon, with our production code). 5 real Bulgarian phone calls (536 s, 32 caller turns, made by our
 team to a test line), streamed at real-time pace in 20 ms frames through our production provider classes:
 
 | Speech-to-text                                    | Word error rate | Booking words right | End of turn after the last word (p50 / p90 / max) |
