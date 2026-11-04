@@ -101,6 +101,7 @@ async function call(ws: WebSocket): Promise<void> {
         say,
         tool: (t) => send({ type: "tool", name: t.call.name, input: t.call.input, result: t.result, ms: Math.round(t.ms) }),
       });
+      if (turn.switchedLanguage) send({ type: "language", language: turn.language });
       for (const r of turn.rounds) {
         const u = r.usage;
         send({ type: "spark", firstTokenMs: r.firstTokenMs === null ? null : Math.round(r.firstTokenMs), totalMs: Math.round(r.totalMs), inputTokens: u.inputTokens, cachedInputTokens: u.cachedInputTokens, outputTokens: u.outputTokens });
@@ -127,6 +128,7 @@ async function call(ws: WebSocket): Promise<void> {
   });
   ws.on("close", () => {
     hungUp.abort();
+    receptionist.hangUp();
     void stt.close();
   });
 }

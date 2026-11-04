@@ -1,0 +1,181 @@
+import type OpenAI from "openai";
+import type { ChatCompletionMessageParam, ChatCompletionTool } from "openai/resources/chat/completions";
+import { BUSINESS, Calendar, TIME_ZONE, toMinutes, weekdayName, type Booking, type FreedSlot, type WaitlistEntry } from "./calendar.ts";
+import type { ToolCall } from "./meta/muse-spark.ts";
+import { runTurn, type ToolBox, type TurnListener, type TurnResult } from "./turn.ts";
+
+/**
+ * Waitlist refill: a cancellation gives a time back, and Khairo calls the callers waiting for that day, one after the
+ * other, until one takes it. The time is held for the waitlist from the moment it's freed, so an inbound caller isn't
+ * offered it meanwhile; if nobody takes it, it goes back on the calendar.
+ *
+ * The outbound call is Muse Spark too, with two tools: `accept_offer` books exactly the freed time for exactly the
+ * person called (the model can't pick another time or name), and `decline_offer` moves on to the next one.
+ */
+
+export type OfferOutcome = "accepted" | "declined" | "wrong_person" | "asked_to_stop" | "no_answer";
+
+/** One freed time, offered to one waitlisted caller. */
+export interface Offer {
+  entry: WaitlistEntry;
+  slot: FreedSlot;
+}
+
+export interface RefillResult {
+  slot: FreedSlot;
+  /** Who was called, in order, and how each call ended. */
+  calls: { entry: WaitlistEntry; outcome: OfferOutcome }[];
+  booking: Booking | null;
+}
+
+/**
+ * Who is offered a freed time, in the order they're called. Only callers waiting for that day, for that part of the
+ * day, whose service fits in the time from its start (`fits`).
+ */
+export function candidatesFor(slot: FreedSlot, waitlist: readonly WaitlistEntry[], fits: (entry: WaitlistEntry) => boolean): WaitlistEntry[] {
+  const afternoon = toMinutes(slot.time) >= 12 * 60;
+  return waitlist
+    .filter((e) => e.status === "waiting" && e.date === slot.date)
+    .filter((e) => e.partOfDay === "any" || (e.partOfDay === "afternoon") === afternoon)
+    .filter(fits)
+    .sort((a, b) => a.joinedAt - b.joinedAt);
+}
+
+/** Places the calls, one per offer: the CLI or a telephony line connects the agent to the person. */
+export type Dialer = (call: OfferCall) => Promise<void>;
+
+export class WaitlistRefill {
+  private readonly freed: FreedSlot[] = [];
+
+  constructor(
+    private readonly client: OpenAI,
+    private readonly calendar: Calendar,
+    private readonly opts: { model?: string } = {},
+  ) {
+    calendar.onFreed((slot) => {
+      // Held at once: nobody else is offered this time while the waitlist is being called.
+      calendar.hold(holderOf(slot), slot.date, slot.time, slot.minutes);
+      this.freed.push(slot);
+    });
+  }
+
+  /** Times freed and not yet offered. */
+  get pending(): readonly FreedSlot[] {
+    return this.freed;
+  }
+
+  /** Calls the waitlist for every freed time, until each is taken or nobody is left to call. */
+  async refill(dial: Dialer): Promise<RefillResult[]> {
+    const results: RefillResult[] = [];
+    for (let slot = this.freed.shift(); slot; slot = this.freed.shift()) {
+      const holder = holderOf(slot);
+      const result: RefillResult = { slot, calls: [], booking: null };
+      const fits = (e: WaitlistEntry) => this.calendar.isFree(slot!.date, toMinutes(slot!.time), e.service.minutes, holder);
+      for (const entry of candidatesFor(slot, this.calendar.waitlist(), fits)) {
+        entry.status = "offered";
+        const call = new OfferCall(this.client, this.calendar, { entry, slot }, holder, this.opts);
+        await dial(call);
+        const outcome = call.outcome ?? "no_answer";
+        result.calls.push({ entry, outcome });
+        if (outcome === "accepted") {
+          entry.status = "booked";
+          result.booking = call.booking;
+          break;
+        }
+        // Declined or not reached: off the list for this time, so they aren't called again for it.
+        entry.status = outcome === "no_answer" ? "waiting" : "declined";
+      }
+      if (!result.booking) this.calendar.release(holder);
+      results.push(result);
+    }
+    return results;
+  }
+}
+
+/** The outbound call that offers one freed time to one waitlisted caller. */
+export class OfferCall implements ToolBox {
+  outcome: OfferOutcome | null = null;
+  booking: Booking | null = null;
+  private readonly messages: ChatCompletionMessageParam[] = [];
+
+  constructor(
+    private readonly client: OpenAI,
+    private readonly calendar: Calendar,
+    readonly offer: Offer,
+    private readonly holder: string,
+    private readonly opts: { model?: string } = {},
+  ) {}
+
+  /** The person called has said something ("Hello?" when they pick up): the agent's reply. */
+  async reply(calleeText: string, listener: TurnListener = {}): Promise<TurnResult> {
+    this.messages.push({ role: "user", content: calleeText });
+    return runTurn(this.client, { model: this.opts.model, system: this.systemPrompt(), messages: this.messages, toolbox: this }, listener);
+  }
+
+  tools(): ChatCompletionTool[] {
+    return [
+      {
+        type: "function",
+        function: {
+          name: "accept_offer",
+          description: "Book the offered time for the person called. Only after they clearly said yes to that time.",
+          parameters: { type: "object", properties: { callerConfirmed: { type: "boolean", enum: [true] } }, required: ["callerConfirmed"], additionalProperties: false },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "decline_offer",
+          description: "The person doesn't take the time, isn't the person we called, or asked not to be called again.",
+          parameters: {
+            type: "object",
+            properties: { reason: { type: "string", enum: ["declined", "wrong_person", "asked_to_stop"] } },
+            required: ["reason"],
+            additionalProperties: false,
+          },
+        },
+      },
+    ];
+  }
+
+  run(call: ToolCall): Record<string, unknown> {
+    if (this.outcome) return { status: "ERROR", message: `already ${this.outcome}` };
+    const { entry, slot } = this.offer;
+    if (call.name === "accept_offer") {
+      if (call.input.callerConfirmed !== true) return { status: "NEEDS", missing: ["callerConfirmed"] };
+      if (!this.calendar.isFree(slot.date, toMinutes(slot.time), entry.service.minutes, this.holder)) return { status: "TAKEN", message: "that time is no longer free" };
+      this.booking = this.calendar.book(this.holder, entry.name, entry.service, slot.date, slot.time, "waitlist");
+      this.outcome = "accepted";
+      return { status: "CONFIRMED", name: entry.name, service: entry.service.id, date: slot.date, weekday: weekdayName(slot.date), time: slot.time };
+    }
+    if (call.name === "decline_offer") {
+      const reason = String(call.input.reason ?? "declined");
+      this.outcome = reason === "wrong_person" || reason === "asked_to_stop" ? reason : "declined";
+      return { status: "DECLINED", reason: this.outcome };
+    }
+    return { status: "ERROR", message: `unknown tool ${call.name}` };
+  }
+
+  systemPrompt(): string {
+    const { entry, slot } = this.offer;
+    const { date, weekday } = this.calendar.today();
+    return `You are the receptionist of ${BUSINESS.name}, a car service in ${BUSINESS.place}, calling a customer back. You are on a phone call: everything you write is spoken aloud by a voice, so write only words to be said.
+
+Today is ${weekday}, ${date} (${TIME_ZONE}).
+
+Why you are calling: ${entry.name} asked to be called if a time opened for a ${entry.service.name.toLowerCase()} on ${weekdayName(entry.date)}, ${entry.date}${entry.partOfDay === "any" ? "" : `, in the ${entry.partOfDay}`}. A time just opened: ${weekdayName(slot.date)} at ${slot.time}. It's ${entry.service.minutes} minutes and $${entry.service.priceUsd}. This is the only time you can offer.
+
+How to speak: one or two short sentences per reply, one question at a time, no lists or symbols. Say times as a person would ("ten in the morning").
+
+The call:
+1. In your first reply, say who you are, that you're calling because they asked to hear if a time opened, and offer the time with its day. Ask if they'd like it.
+2. A clear yes: call accept_offer with callerConfirmed true. CONFIRMED: say it's booked, with the day and time, and say goodbye.
+3. No, or they no longer need it: call decline_offer with reason declined, say no problem, and say goodbye. If they ask not to be called again: reason asked_to_stop.
+4. If the person isn't ${entry.name}: apologise, call decline_offer with reason wrong_person, and say goodbye. Never say why to someone else.
+5. They ask for another time: you can only offer this one; if it doesn't suit them, it's a no.`;
+  }
+}
+
+function holderOf(slot: FreedSlot): string {
+  return `waitlist:${slot.cancelled.id}`;
+}

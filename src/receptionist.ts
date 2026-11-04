@@ -1,45 +1,43 @@
 import type OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
-import { BUSINESS, Calendar, TIME_ZONE } from "./calendar.ts";
-import { streamSpark, type SparkUsage, type ToolCall } from "./meta/muse-spark.ts";
+import { BUSINESS, Calendar, TIME_ZONE, type BookingSession } from "./calendar.ts";
+import { decideLanguage, lettersByLanguage, scriptsOf, withoutAddresses, wordCount } from "./language.ts";
+import type { ReasoningEffort } from "./meta/muse-spark.ts";
+import { runTurn, type TurnListener, type TurnResult } from "./turn.ts";
 
-/** Model rounds per caller turn: speak, call a tool, speak about its answer, … */
-const MAX_ROUNDS = 4;
+export type { Round, TurnListener, TurnResult } from "./turn.ts";
+
+export type Language = "en" | "bg";
+const LANGUAGES: Language[] = ["en", "bg"];
+const LANGUAGE_NAMES: Record<Language, string> = { en: "English", bg: "Bulgarian" };
 
 export const GREETING = `${BUSINESS.name}, hello! How can I help?`;
 
-export interface Round {
-  firstTokenMs: number | null;
-  totalMs: number;
-  text: string;
-  toolCalls: { call: ToolCall; result: Record<string, unknown>; ms: number }[];
-  usage: SparkUsage;
-}
-
-export interface TurnResult {
-  /** What the receptionist says, in order (text before a tool call, then after its answer). */
-  spoken: string;
-  rounds: Round[];
-}
-
-/** As a turn happens: each line to say as soon as its round ends (so the echo plays while the tool runs), each tool. */
-export interface TurnListener {
-  say?: (text: string) => void;
-  tool?: (t: Round["toolCalls"][number]) => void;
+export interface ReceptionistTurn extends TurnResult {
+  /** The call's language for this reply, and whether the caller's words just switched it. */
+  language: Language;
+  switchedLanguage: boolean;
 }
 
 /**
- * One phone call's receptionist on Muse Spark: the caller's words in, what to say out. Books only through the
- * calendar's tools.
+ * One phone call's receptionist on Muse Spark: the caller's words in, what to say out. Books, cancels and waitlists only
+ * through its call's calendar session. Follows the caller's language by the script of their words (language.ts): Muse
+ * Voice Transcribe writes Bulgarian in Cyrillic even on a stream biased to English, so the reply to a caller's first
+ * Bulgarian sentence is already in Bulgarian.
  */
 export class Receptionist {
   private readonly messages: ChatCompletionMessageParam[] = [];
+  readonly session: BookingSession;
+  private language: Language = "en";
+  private callerTurns = 0;
+  private readonly scripts = scriptsOf(LANGUAGES);
 
   constructor(
     private readonly client: OpenAI,
     private readonly calendar: Calendar,
-    private readonly opts: { model?: string } = {},
+    private readonly opts: { model?: string; reasoningEffort?: ReasoningEffort } = {},
   ) {
+    this.session = calendar.session();
     this.messages.push({ role: "assistant", content: GREETING });
   }
 
@@ -47,51 +45,39 @@ export class Receptionist {
     return GREETING;
   }
 
-  async reply(callerText: string, listener: TurnListener = {}): Promise<TurnResult> {
+  async reply(callerText: string, listener: TurnListener = {}): Promise<ReceptionistTurn> {
+    const switchedLanguage = this.followLanguage(callerText);
+    this.callerTurns++;
     this.messages.push({ role: "user", content: callerText });
-
-    const rounds: Round[] = [];
-    const spoken: string[] = [];
-    for (let i = 0; i < MAX_ROUNDS; i++) {
-      const round: Round = { firstTokenMs: null, totalMs: 0, text: "", toolCalls: [], usage: { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, reasoningTokens: 0 } };
-      const calls: ToolCall[] = [];
-      const messages: ChatCompletionMessageParam[] = [{ role: "system", content: this.systemPrompt() }, ...this.messages];
-      for await (const ev of streamSpark(this.client, { model: this.opts.model, messages, tools: this.calendar.tools() })) {
-        if (ev.type === "text") round.text += ev.delta;
-        else if (ev.type === "toolCall") calls.push(ev.call);
-        else Object.assign(round, { firstTokenMs: ev.firstTokenMs, totalMs: ev.totalMs, usage: ev.usage });
-      }
-      round.text = round.text.trim();
-      if (round.text) {
-        spoken.push(round.text);
-        listener.say?.(round.text);
-      }
-      this.messages.push({
-        role: "assistant",
-        content: round.text,
-        ...(calls.length ? { tool_calls: calls.map((c) => ({ id: c.id, type: "function" as const, function: { name: c.name, arguments: JSON.stringify(c.input) } })) } : {}),
-      });
-      for (const call of calls) {
-        const started = performance.now();
-        const result = this.calendar.run(call);
-        const done = { call, result, ms: performance.now() - started };
-        round.toolCalls.push(done);
-        listener.tool?.(done);
-        this.messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
-      }
-      rounds.push(round);
-      if (!calls.length) break;
-    }
-    return { spoken: spoken.join(" "), rounds };
+    const turn = await runTurn(this.client, { model: this.opts.model, reasoningEffort: this.opts.reasoningEffort, system: this.systemPrompt(), messages: this.messages, toolbox: this.session }, listener);
+    return { ...turn, language: this.language, switchedLanguage };
   }
 
-  /** The prompt for the call as it is now (today's date). */
+  /** The call ended: whatever it still holds is free again. */
+  hangUp(): void {
+    this.session.end();
+  }
+
+  /** Switch the call's language when the caller's words are clearly in the other script. */
+  private followLanguage(text: string): boolean {
+    if (!this.scripts) return false;
+    const clean = withoutAddresses(text);
+    const next = decideLanguage({ letters: lettersByLanguage(clean, this.scripts), words: wordCount(clean), current: this.language, firstTurn: this.callerTurns === 0 });
+    if (!next || next === this.language) return false;
+    this.language = next as Language;
+    return true;
+  }
+
+  /** The prompt for the call as it is now (language, today's date). */
   systemPrompt(): string {
     const { date, weekday } = this.calendar.today();
     const services = BUSINESS.services.map((s) => `- ${s.id}: ${s.name}, ${s.minutes} min, $${s.priceUsd}`).join("\n");
+    const language = LANGUAGE_NAMES[this.language];
     return `You are the receptionist of ${BUSINESS.name}, a car service in ${BUSINESS.place}. You are on a phone call: everything you write is spoken aloud by a voice, so write only words to be said.
 
 Today is ${weekday}, ${date} (${TIME_ZONE}).
+
+The caller is speaking ${language}: reply only in ${language}. Prices stay in dollars.
 
 How to speak:
 - One or two short sentences per reply, and one question at a time. No lists, markdown, emoji or symbols.
@@ -110,6 +96,10 @@ Booking, in this order:
 3. When the caller picks a time, ask for the name for the booking if you don't have it, then call hold_slot.
 4. HELD: read back name, service, weekday, date and time, and ask "Is that right?" Never tell the caller what words to say.
 5. Only after a clear yes, call confirm_booking with callerConfirmed true. CONFIRMED: say it's booked and say goodbye.
-TAKEN: that time just went; offer the slots it returned. NEEDS: ask for what is missing.`;
+TAKEN: that time just went; offer the slots it returned. NEEDS: ask for what is missing.
+
+Waitlist: when the day the caller wants is full and the times offered don't suit them, offer to call them back if a time opens up that day. Only if they say yes, call join_waitlist with their name and callbackOk true. WAITLISTED: tell them you'll call if something opens that day, and say goodbye.
+
+Cancelling: call find_booking with the name the booking is under; if the caller already said their name, use it right away, never ask for it again. FOUND: read back the service, weekday and time and ask if they want it cancelled. Only after a clear yes, call cancel_booking with that bookingId and callerConfirmed true. CANCELLED: say it's cancelled and say goodbye. NOT_FOUND: ask for the name again, once.`;
   }
 }

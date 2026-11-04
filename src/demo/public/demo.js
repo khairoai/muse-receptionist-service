@@ -273,6 +273,9 @@ async function start() {
         line("meta", `⚙ ${msg.name}(${JSON.stringify(msg.input)}) → ${r.status}${detail}`);
         return;
       }
+      case "language":
+        line("meta", `↔ language · you're speaking ${msg.language === "bg" ? "Bulgarian" : "English"}: the call follows, on the same Muse stream`);
+        return;
       case "spark":
         line("meta", `muse-spark · first token ${msg.firstTokenMs ?? "–"} ms, done ${msg.totalMs} ms · ${msg.inputTokens} in (${msg.cachedInputTokens} cached), ${msg.outputTokens} out`);
         return;
