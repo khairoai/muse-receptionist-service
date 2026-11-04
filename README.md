@@ -267,4 +267,4 @@ works, one file per caller turn. The sample callers are synthetic voices, not re
 
 Open source under the [Apache License 2.0](LICENSE). Copyright 2026 Khairo.
 
-[Khairo](https://khairo.ai): Vladislav Varadinov and Kristiyan, Sofia.
+[Khairo](https://khairo.ai): Vlad and Kristiyan, Sofia.
