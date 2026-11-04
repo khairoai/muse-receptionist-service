@@ -1,0 +1,32 @@
+Khairo Source-Available License 1.0
+
+Copyright (c) 2026 Khairo. All rights reserved.
+
+This repository ("the Software") is published so that people can read it, run it and judge it. It is not open
+source. Khairo keeps all rights not granted below.
+
+1. What you may do
+   You may view, download, run and modify the Software, for free, only to:
+   a) evaluate it, including judging it in the Meta Global AI Developer Hackathon;
+   b) learn from it, or for non-commercial research; and
+   c) talk about it, quoting short parts with a reference to this repository.
+
+2. What you may not do without Khairo's written permission
+   a) use the Software, or anything derived from it, in a commercial product or service, including offering it to
+      others as a hosted service;
+   b) redistribute the Software or modified versions of it, except as a link to this repository; or
+   c) remove or change this license or the copyright notice.
+
+3. Hackathon submission
+   The permissions the submitters granted to Meta and Cerebral Valley when submitting this project (to use, publish,
+   share and promote the submitted materials) apply in addition to this license.
+
+4. Third parties
+   The Software calls services of other companies (Meta Model API and others). Your use of those services is under
+   their own terms, with your own keys.
+
+5. No warranty
+   The Software is provided "as is", without warranty of any kind. Khairo is not liable for any claim, damages or
+   other liability arising from the Software or its use.
+
+For any other use, including commercial licensing, contact Khairo through https://khairo.ai.

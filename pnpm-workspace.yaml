@@ -1,0 +1,2 @@
+# Its own pnpm workspace, so pnpm doesn't climb into a parent one.
+packages: []

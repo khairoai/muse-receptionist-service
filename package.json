@@ -1,0 +1,27 @@
+{
+  "name": "receptionist-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A phone receptionist that books appointments, built on Meta's Muse Voice Transcribe and Muse Spark.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "chat": "tsx src/cli/chat.ts",
+    "call": "tsx src/cli/call.ts",
+    "bench:spark": "tsx src/cli/bench-spark.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "openai": "^7.21.0",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  },
+  "packageManager": "pnpm@9.10.0"
+}
