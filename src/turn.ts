@@ -5,6 +5,9 @@ import { streamSpark, type ReasoningEffort, type SparkUsage, type ToolCall } fro
 /** Model rounds per turn: speak, call a tool, speak about its answer, … */
 const MAX_ROUNDS = 4;
 
+/** A whole sentence at the start of the text: up to . ! or ?, then a space and more text. */
+const SENTENCE = /^([\s\S]*?[.!?…]["'”»)]?)\s+(?=\S)/;
+
 /**
  * Said to the model, for one round only, when its first round neither called a tool nor asked the caller anything.
  * Muse Spark sometimes says "I'll pull up your booking now" and stops there: 3 of 20 such turns in our benchmark
@@ -35,7 +38,7 @@ export interface TurnResult {
   rounds: Round[];
 }
 
-/** As a turn happens: each line to say as soon as its round ends (so the echo plays while the tool runs), each tool. */
+/** As a turn happens: each sentence to say as soon as Muse has written it (so the echo plays while the tool runs), each tool. */
 export interface TurnListener {
   say?: (text: string) => void;
   tool?: (t: Round["toolCalls"][number]) => void;
@@ -61,16 +64,26 @@ export async function runTurn(
     const calls: ToolCall[] = [];
     // The note is for this round only: it never stays in the call's history.
     const messages: ChatCompletionMessageParam[] = [{ role: "system", content: req.system }, ...req.messages, ...(nudged ? [{ role: "system" as const, content: DANGLING_NOTE }] : [])];
+    // Each sentence goes to the voice as soon as Muse has written it, while the rest of the round streams.
+    let unsaid = "";
+    const sayDone = (all: boolean) => {
+      for (let m = SENTENCE.exec(unsaid); m || (all && unsaid.trim()); m = SENTENCE.exec(unsaid)) {
+        const sentence = (m ? m[1]! : unsaid).trim();
+        unsaid = m ? unsaid.slice(m[0].length) : "";
+        if (sentence) listener.say?.(sentence);
+      }
+    };
     for await (const ev of streamSpark(client, { model: req.model, reasoningEffort: req.reasoningEffort, messages, tools: req.toolbox.tools() })) {
-      if (ev.type === "text") round.text += ev.delta;
-      else if (ev.type === "toolCall") calls.push(ev.call);
+      if (ev.type === "text") {
+        round.text += ev.delta;
+        unsaid += ev.delta;
+        sayDone(false);
+      } else if (ev.type === "toolCall") calls.push(ev.call);
       else Object.assign(round, { firstTokenMs: ev.firstTokenMs, totalMs: ev.totalMs, usage: ev.usage });
     }
+    sayDone(true);
     round.text = round.text.trim();
-    if (round.text) {
-      spoken.push(round.text);
-      listener.say?.(round.text);
-    }
+    if (round.text) spoken.push(round.text);
     req.messages.push({
       role: "assistant",
       content: round.text,

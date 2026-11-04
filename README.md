@@ -53,6 +53,7 @@ from our private monorepo on Nov 4, so its history starts that day: everything i
 | Nov 4                   | **The English receptionist and its live demo:** [khairo.ai/demo](https://khairo.ai/demo) in the browser and the +1 (415) 873-5520 line                                                                                                                                                                                                                                                                                                                      | production                                                               |
 | Nov 4                   | **This repo:** the Muse clients on their own, the demo receptionist and calendar, the browser demo, and the `call` and `chat` tools                                                                                                                                                                                                                                                                                                                         | everything here                                                          |
 | Nov 4                   | **Waitlist refill.** A cancellation frees a time; it's held for the waitlist, and Khairo calls the people waiting for that day, one after the other, on Muse Spark, until one takes it. The outbound agent can only book that time for that person. Production had a waitlist (`join_waitlist`) but never called anyone back from it                                                                                                                  | [`src/waitlist.ts`](src/waitlist.ts), `pnpm waitlist`                    |
+| Nov 4                   | **Waitlist refill on a real phone line, and "book now, move later".** `pnpm phone` puts the receptionist on a Telnyx number: callers ring in, and the waitlist call back goes out from the same number to the caller ID they called from. A caller whose day is full books another day and joins that day's waitlist; when a time opens, Khairo calls and offers to move the booking (a yes moves it, and the old time goes to its own waitlist). The call back asks for the person before saying anything about a booking. Also: each sentence goes to the voice as soon as Muse Spark writes it | [`src/phone/server.ts`](src/phone/server.ts), [`src/waitlist.ts`](src/waitlist.ts), `pnpm phone` |
 | Nov 4                   | **`pnpm bench`: speed, tool accuracy and guardrails.** First turns across models and efforts (60 / 60 right), and whole calls that push for a booking that mustn't happen (20 / 20 held). It found Muse Spark sometimes promising "I'll check" and stopping; a code-level fix took cancel calls from 3 / 5 to 5 / 5                                                                                                                                         | [`src/cli/bench.ts`](src/cli/bench.ts), [`src/turn.ts`](src/turn.ts)     |
 
 **Before the hackathon** (the existing Khairo platform, not part of this entry): the telephony, the bookings engine
@@ -113,11 +114,12 @@ caller › No, Friday won't work, I need it Thursday morning and need the car ba
   ⏸ 09:00 on 2026-11-05 is free again: held for the waitlist (1 waiting)
 
 ☎  Call 3, outbound: Khairo calls Thomas Reed back
-  them › Hello?
-  agent › Hi this is Golden Gate Auto Care calling for Thomas Reed. You asked to be called if a time opened for an oil change and we had one open tomorrow Thursday at nine in the morning. Would you like to take it?
-  them › Yes, that works great — I'll take the nine o'clock!
+  agent › Hi, this is Golden Gate Auto Care calling. Is this Thomas?
+  them › Yeah, this is Thomas.
+  agent › Thanks so much Thomas. You asked us to call if a time opened for your oil change on Thursday, and one just did. Would you like to take Thursday at nine in the morning for forty five minutes?
+  them › Yeah, that'd be perfect — I'll take the 9 o'clock, thanks!
   ⚙ accept_offer({"callerConfirmed":true})
-  agent › You're all booked for Thursday at nine in the morning. Thanks and goodbye.
+  agent › Wonderful, you're all booked for Thursday at nine in the morning. We look forward to seeing you, goodbye.
 
   09:00  Oil change, Thomas Reed  ← from the waitlist
   owner › Maria Lopez cancelled 09:00; Khairo rebooked it for Thomas Reed from the waitlist (Thomas Reed: accepted).
@@ -129,6 +131,13 @@ caller › No, Friday won't work, I need it Thursday morning and need the car ba
   first come first (`candidatesFor`). A no takes them off the list for that time; no answer keeps them on it.
 - **A narrow outbound agent.** Its only tools are `accept_offer` (that time, that person, after a clear yes) and
   `decline_offer` (no, wrong person, or "don't call me again"). It can't book anything else.
+- **It asks for the person first.** The call back opens with "Hi, this is Golden Gate Auto Care calling. Is this
+  Thomas?" and says nothing about a booking until they say it's them, so a wrong person never hears it.
+- **Book now, move later.** When the day is full, the receptionist books the next free day and puts the caller on the
+  full day's waitlist (`join_waitlist` with `moveBookingId`, only a booking made on that same call). The call back then
+  offers to move it: a yes books the new time and cancels the old one, which goes to its own waitlist.
+- **On a real line:** `pnpm phone` runs all of this on a Telnyx number. In its terminal, `cancel` cancels Maria's
+  booking and the waitlist call goes out to the number the waiting caller rang from.
 
 ## Benchmarks
 
@@ -215,8 +224,8 @@ still describes our earlier Deepgram setup; on these calls the end of turn is Mu
 
 ## What's next
 
-- **Waitlist refill on the live lines:** today it runs in this repo; next it goes onto Khairo's phone lines, through
-  the same outbound calls production already places.
+- **Waitlist refill on the live lines:** today it runs in this repo, on a phone line with `pnpm phone`; next it goes
+  onto Khairo's production lines and bookings engine, through the same outbound calls production already places.
 - **Bringing customers back:** booking reminders, and calls to customers who opted in when their next service is due.
 - **A second vertical:** dental clinics, on the same booking tools.
 - **Faster turns:** Muse Spark's time to its first token is three quarters of every turn's wait, so that's where we're
@@ -238,6 +247,7 @@ pnpm call samples/bg-oil-change/*.wav  # a Bulgarian caller on the English line:
 pnpm chat                              # be the caller: type your lines (book, cancel, join the waitlist)
 pnpm waitlist                          # a cancellation refilled from the waitlist, three calls (--you to play the customers)
 pnpm bench                             # Muse Spark speed, tool accuracy and guardrails
+pnpm phone                             # on a real Telnyx number: calls in, waitlist calls back out (Telnyx keys in .env)
 ```
 
 `pnpm demo` is the same call as [khairo.ai/demo](https://khairo.ai/demo): talk into your microphone, and the page
@@ -258,6 +268,7 @@ works, one file per caller turn. The sample callers are synthetic voices, not re
 | [`src/waitlist.ts`](src/waitlist.ts)         | Waitlist refill: hold the freed time, call the waitlist back       |
 | [`src/language.ts`](src/language.ts)         | Following the caller's language by the script of their words       |
 | [`src/demo/`](src/demo)                      | The browser demo: the page and its server                          |
+| [`src/phone/`](src/phone)                    | The receptionist on a Telnyx number, and the waitlist call back    |
 | [`src/tts/`](src/tts)                        | The ElevenLabs voice                                               |
 | [`src/cli/`](src/cli)                        | `call` (WAV → full pipeline), `chat` (text), `waitlist`, `bench`   |
 | [`docs/benchmarks/`](docs/benchmarks)        | The benchmarks, with how they were run                             |
