@@ -17,6 +17,24 @@ Your World_).
 | --- | --- |
 | ![khairo.ai/demo: talk to the receptionist in the browser](docs/images/demo-page.png) | ![The Khairo dashboard calendar with a booking made by the receptionist](docs/images/dashboard-calendar.png) |
 
+## What we built during the hackathon (Oct 27 – Nov 4)
+
+Khairo existed before the hackathon. This is what we built during it; everything in this repo was written in that
+time.
+
+| Date | Built | Where |
+| --- | --- | --- |
+| Nov 2–3 | **Muse Spark as the receptionist's brain.** The streaming client with tools and `reasoning_effort`, an evaluation of Muse Spark 1.2 and 1.3 at three effort levels (right tool and inputs in 36 of 36 tries), then every live receptionist moved onto it | [`src/meta/muse-spark.ts`](src/meta/muse-spark.ts), production |
+| Nov 2–4 | **Following the caller's language with Muse Voice Transcribe's code-switching.** English speech on a stream biased to Bulgarian comes back as English words, so the call switches language from the caller's first sentence without reopening the stream | production (this repo's demo is English only) |
+| Nov 4 | **Turns that don't wait in silence.** Muse Spark echoes the caller's request while a tool runs; in production, Meta's Llama 3.3 writes a two-word acknowledgement in parallel when Muse Spark goes straight to a tool. Also: one question per turn, two offered times, today's date in context, and hanging up on a silent line | [`src/receptionist.ts`](src/receptionist.ts), production |
+| Nov 4 | **The English receptionist and its live demo:** [khairo.ai/demo](https://khairo.ai/demo) in the browser and the +1 (415) 873-5520 line | production |
+| Nov 4 | **This repo:** the Muse clients on their own, the demo receptionist and calendar, the browser demo, and the `call` and `chat` tools | everything here |
+
+**Before the hackathon** (the existing Khairo platform, not part of this entry): the telephony, the bookings engine
+and the dashboard, the ElevenLabs voice, and the Muse Voice Transcribe integration in our production voice service. We
+added that integration on Oct 25, the evening before kickoff, after it beat Deepgram Nova-3 on our real Bulgarian calls
+(20% vs 30% word errors, end of turn in ~0.4 s instead of up to 7 s), which is why the receptionist hears with Muse.
+
 ## Where Meta's models are used
 
 | Model | Where | What it does |
@@ -54,7 +72,8 @@ works, one file per caller turn. The sample callers are synthetic voices, not re
 ## In production
 
 Both models answer Khairo's live phone lines, including the demo line above. From the caller's last word to the
-receptionist's voice: **1.86 s at the median**, through telephony, at about 5¢ a minute.
+receptionist's voice: **1.5–1.6 s at the median** on our latest calls (1.9 s before the work above), through
+telephony, at about 5¢ a minute.
 
 ![Production call analytics](docs/images/production-analytics.png)
 
@@ -63,7 +82,7 @@ receptionist's voice: **1.86 s at the median**, through telephony, at about 5¢ 
 | Path | What |
 | --- | --- |
 | [`src/meta/`](src/meta) | The Muse Voice Transcribe and Muse Spark clients |
-| [`src/receptionist.ts`](src/receptionist.ts) | The receptionist: prompt, tool loop, language following |
+| [`src/receptionist.ts`](src/receptionist.ts) | The receptionist: prompt and tool loop |
 | [`src/calendar.ts`](src/calendar.ts) | A demo car service and its calendar behind the three booking tools |
 | [`src/demo/`](src/demo) | The browser demo: the page and its server |
 | [`src/tts/`](src/tts) | The ElevenLabs voice |
@@ -72,7 +91,6 @@ receptionist's voice: **1.86 s at the median**, through telephony, at about 5¢ 
 
 ## License and team
 
-Source-available under the [Khairo Source-Available License](LICENSE): free to read, run and modify to evaluate or
-judge it.
+Open source under the [Apache License 2.0](LICENSE). Copyright 2026 Khairo.
 
 [Khairo](https://khairo.ai): Vladislav Varadinov and Kristiyan, Sofia.
