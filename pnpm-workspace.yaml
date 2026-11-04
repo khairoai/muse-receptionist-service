@@ -1,2 +1,3 @@
-# Its own pnpm workspace, so pnpm doesn't climb into a parent one.
-packages: []
+# Its own pnpm workspace, so pnpm doesn't climb into a parent one; web/ is the demo page.
+packages:
+  - web

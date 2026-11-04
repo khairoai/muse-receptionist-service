@@ -5,3 +5,7 @@ node_modules/
 *.log
 .DS_Store
 SUBMISSION.md
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo

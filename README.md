@@ -5,7 +5,7 @@ the waitlist back to fill the time. Built on Meta's Muse Voice Transcribe and Mu
 
 > **Try it live:** talk to it in your browser at **[khairo.ai/demo](https://khairo.ai/demo)**, or call
 > **+1 (415) 873-5520**. It's the receptionist of _Golden Gate Auto Care_, a demo car service: ask about prices and
-> hours, then book an appointment.
+> hours, then book an appointment. Or run the same page on your machine with `pnpm demo` ([Run it](#run-it)).
 
 Owner-run businesses (car services, dentists, salons) still take bookings by phone, and the owner can't pick up mid-job.
 A missed call goes to the next business on the list. Khairo answers on the business's own number and books into its
@@ -254,8 +254,12 @@ pnpm bench                             # Muse Spark speed, tool accuracy and gua
 pnpm phone                             # on a real Telnyx number: calls in, waitlist calls back out (Telnyx keys in .env)
 ```
 
-`pnpm demo` is the same call as [khairo.ai/demo](https://khairo.ai/demo): talk into your microphone, and the page
-shows what Muse heard, every tool call and the timing of each step.
+`pnpm demo` is [khairo.ai/demo](https://khairo.ai/demo) on this repo's pipeline: the same page, built from the same
+frontend code ([`web/`](web), Next.js and Tailwind), served with the call by [`src/demo/server.ts`](src/demo/server.ts).
+Talk into your microphone: while you talk, "Behind the scenes" shows the garage's calendar as the receptionist checks,
+holds and books a time, and "Under the hood" shows what Muse heard, every tool call and the timing of each step. To
+work on the page itself with hot reload, run `pnpm demo:server` and `pnpm demo:web` (http://localhost:3001) side by
+side.
 
 `pnpm call` streams each WAV as one caller turn, at real time in 20 ms frames like a phone line. It prints what Muse
 heard, every tool call and its answer, what the receptionist says, and the timing of each turn. Any 16-bit PCM WAV
@@ -271,7 +275,8 @@ works, one file per caller turn. The sample callers are synthetic voices, not re
 | [`src/calendar.ts`](src/calendar.ts)         | A demo car service's shared calendar, and each call's booking tools |
 | [`src/waitlist.ts`](src/waitlist.ts)         | Waitlist refill: hold the freed time, call the waitlist back       |
 | [`src/language.ts`](src/language.ts)         | Following the caller's language by the script of their words       |
-| [`src/demo/`](src/demo)                      | The browser demo: the page and its server                          |
+| [`src/demo/`](src/demo)                      | The browser demo's server: the call, and the calendar for the page  |
+| [`web/`](web)                                | The browser demo's page: khairo.ai/demo's frontend (Next.js)        |
 | [`src/phone/`](src/phone)                    | The receptionist on a Telnyx number, and the waitlist call back    |
 | [`src/tts/`](src/tts)                        | The ElevenLabs voice                                               |
 | [`src/cli/`](src/cli)                        | `call` (WAV → full pipeline), `chat` (text), `waitlist`, `bench`   |
@@ -282,4 +287,4 @@ works, one file per caller turn. The sample callers are synthetic voices, not re
 
 Open source under the [Apache License 2.0](LICENSE). Copyright 2026 Khairo.
 
-[Khairo](https://khairo.ai): Vlad and Kristiyan, Sofia.
+[Khairo](https://khairo.ai): Vlad and Kris

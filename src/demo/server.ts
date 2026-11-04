@@ -1,5 +1,8 @@
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { extname, normalize } from "node:path";
+import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import { BUSINESS, Calendar } from "../calendar.ts";
 import { metaApiKey, sparkModel } from "../cli/env.ts";
@@ -7,20 +10,29 @@ import { createSparkClient } from "../meta/muse-spark.ts";
 import { openTranscribeStream, SAMPLE_RATE } from "../meta/muse-transcribe.ts";
 import { Receptionist } from "../receptionist.ts";
 import { speak, TTS_SAMPLE_RATE, voiceFromEnv } from "../tts/elevenlabs.ts";
+import { LiveView } from "./live.ts";
 
 /**
  * The khairo.ai/demo page, on this repo's pipeline: talk to Golden Gate Auto Care's receptionist from the browser.
- *   pnpm demo        then open http://localhost:3000
- * The browser sends the microphone as 16 kHz PCM over a WebSocket; here it streams to Muse Voice Transcribe, whose end
- * of turn hands the words to Muse Spark and the calendar tools, and each reply line is spoken by ElevenLabs (Meta has
- * no text-to-speech model), streamed back as PCM. Every line, tool call and timing goes to the page's log too.
+ *   pnpm demo        builds the page (web/) and opens it on http://localhost:3000
+ * The page is web/, khairo.ai/demo's frontend, built as static files into web/out and served from here. The browser
+ * sends the microphone as 16 kHz PCM over a WebSocket (/call); here it streams to Muse Voice Transcribe, whose end of
+ * turn hands the words to Muse Spark and the calendar tools, and each reply line is spoken by ElevenLabs (Meta has no
+ * text-to-speech model), streamed back as PCM. Every line, tool call and timing goes to the page's log too, and after
+ * each tool the calendar as the garage sees it (live.ts), for the page's "behind the scenes" panel.
  */
 const PORT = Number(process.env.PORT) || 3000;
-const PUBLIC = new URL("./public/", import.meta.url);
-const FILES: Record<string, [string, string]> = {
-  "/": ["index.html", "text/html; charset=utf-8"],
-  "/demo.js": ["demo.js", "text/javascript; charset=utf-8"],
-  "/mic-worklet.js": ["mic-worklet.js", "text/javascript; charset=utf-8"],
+const SITE = fileURLToPath(new URL("../../web/out/", import.meta.url));
+const TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json",
+  ".txt": "text/plain; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".png": "image/png",
+  ".woff2": "font/woff2",
 };
 const BYTES_PER_MS = (SAMPLE_RATE * 2) / 1000;
 
@@ -32,10 +44,18 @@ if (!voice) {
   process.exit(1);
 }
 
+// The built page's files; "/" is index.html. Only files under web/out, nothing above it.
 const http = createServer(async (req, res) => {
-  const file = FILES[new URL(req.url ?? "/", "http://localhost").pathname];
-  if (!file) return void res.writeHead(404).end();
-  res.writeHead(200, { "content-type": file[1], "cache-control": "no-store" }).end(await readFile(new URL(file[0], PUBLIC)));
+  let path = decodeURIComponent(new URL(req.url ?? "/", "http://localhost").pathname);
+  if (path.endsWith("/")) path += "index.html";
+  const file = normalize(`${SITE}${path}`);
+  if (!file.startsWith(SITE)) return void res.writeHead(404).end();
+  try {
+    const body = await readFile(file);
+    res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream", "cache-control": "no-store" }).end(body);
+  } catch {
+    res.writeHead(404).end();
+  }
 });
 
 const wss = new WebSocketServer({ server: http, path: "/call" });
@@ -46,6 +66,7 @@ async function call(ws: WebSocket): Promise<void> {
   const send = (msg: Record<string, unknown>) => ws.readyState === ws.OPEN && ws.send(JSON.stringify(msg));
   const calendar = new Calendar();
   const receptionist = new Receptionist(spark, calendar, { model: sparkModel() });
+  const live = new LiveView(calendar);
   const hungUp = new AbortController();
 
   // The receptionist's lines, spoken one after another: the line's text, its PCM as binary frames, then its end.
@@ -78,6 +99,7 @@ async function call(ws: WebSocket): Promise<void> {
   }
   if (ws.readyState !== ws.OPEN) return void stt.close();
   send({ type: "ready", business: BUSINESS.name, sttOpenMs: Math.round(performance.now() - opening) });
+  send({ type: "live", live: live.snapshot() });
   say(receptionist.greeting);
 
   // Audio the browser has sent, in stream time: what Muse's lastChangeMs is measured in.
@@ -99,7 +121,11 @@ async function call(ws: WebSocket): Promise<void> {
     try {
       const turn = await receptionist.reply(heard, {
         say,
-        tool: (t) => send({ type: "tool", name: t.call.name, input: t.call.input, result: t.result, ms: Math.round(t.ms) }),
+        tool: (t) => {
+          send({ type: "tool", name: t.call.name, input: t.call.input, result: t.result, ms: Math.round(t.ms) });
+          live.record(t.call.name, t.result);
+          send({ type: "live", live: live.snapshot() });
+        },
       });
       if (turn.switchedLanguage) send({ type: "language", language: turn.language });
       for (const r of turn.rounds) {
@@ -134,5 +160,6 @@ async function call(ws: WebSocket): Promise<void> {
 }
 
 http.listen(PORT, () => {
+  if (!existsSync(SITE)) console.error("The page isn't built: run pnpm demo (it builds web/ first), or pnpm --dir web build.");
   console.log(`${BUSINESS.name}'s receptionist on Muse Voice Transcribe + Muse Spark: http://localhost:${PORT}`);
 });

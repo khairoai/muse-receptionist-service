@@ -1,0 +1,123 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+ * khairo.ai's design tokens and its public site's dark green theme, as on khairo.ai/demo (only what this page uses).
+ * --font-manrope is set on <html> by next/font in layout.tsx.
+ */
+
+@theme inline {
+  --font-sans: var(--font-manrope), "Manrope", sans-serif;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+}
+
+:root {
+  --radius: 0.5rem;
+  --background: oklch(0.985 0.003 150);
+  --foreground: oklch(0.23 0.024 160);
+  --card: oklch(1 0 0);
+  --primary: oklch(0.46 0.115 158);
+  --primary-foreground: oklch(0.995 0.003 150);
+  --muted: oklch(0.955 0.005 150);
+  --muted-foreground: oklch(0.53 0.014 160);
+  --border: oklch(0.91 0.009 150);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    letter-spacing: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+.site-container {
+  width: min(1280px, calc(100% - 96px));
+  margin-inline: auto;
+}
+.site-nav {
+  height: 94px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+@media (max-width: 1100px) {
+  .site-container {
+    width: calc(100% - 48px);
+  }
+}
+@media (max-width: 760px) {
+  .site-container {
+    width: calc(100% - 32px);
+  }
+  .site-nav {
+    height: 76px;
+  }
+}
+
+/* The public site's theme: glass dark, with a glowing green backdrop. */
+.landing-theme {
+  --background: oklch(0.17 0.035 165);
+  --foreground: oklch(0.96 0.01 150);
+  --card: oklch(1 0 0 / 0.08);
+  --muted: oklch(1 0 0 / 0.06);
+  --muted-foreground: oklch(0.8 0.03 155);
+  --border: oklch(1 0 0 / 0.16);
+  --primary: oklch(0.8 0.15 158);
+  --primary-foreground: oklch(0.2 0.03 162);
+  min-height: 100vh;
+  background:
+    radial-gradient(55% 45% at 15% 10%, oklch(0.45 0.13 160) 0%, transparent 70%),
+    radial-gradient(50% 45% at 90% 30%, oklch(0.4 0.1 195) 0%, transparent 70%),
+    radial-gradient(55% 50% at 25% 85%, oklch(0.3 0.065 158) 0%, transparent 70%), var(--background);
+  background-attachment: fixed;
+  color: var(--foreground);
+}
+/* Tailwind's preflight gives buttons the default arrow; every clickable control shows the hand */
+.landing-theme :is(button, [role="button"], summary):not(:disabled, [aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+/* The behind-the-scenes calendar: the slot held for a caller who is still deciding breathes */
+@keyframes slot-held-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+.slot-held {
+  animation: slot-held-breathe 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

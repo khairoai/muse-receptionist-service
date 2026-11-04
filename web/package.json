@@ -1,0 +1,27 @@
+{
+  "name": "receptionist-demo-web",
+  "private": true,
+  "description": "The khairo.ai/demo page, on this repo's receptionist: built as static files that pnpm demo serves.",
+  "type": "module",
+  "scripts": {
+    "dev": "NEXT_PUBLIC_CALL_URL=ws://localhost:3000/call next dev -p 3001",
+    "build": "next build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "lucide-react": "^0.575.0",
+    "motion": "^14.1.0",
+    "next": "16.4.3",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.1",
+    "@types/node": "^22.16.5",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "tailwindcss": "^4.2.1",
+    "tw-animate-css": "^1.3.4",
+    "typescript": "^5.9.3"
+  }
+}
