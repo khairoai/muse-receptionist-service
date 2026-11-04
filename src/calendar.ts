@@ -84,6 +84,10 @@ export interface WaitlistEntry {
   partOfDay: PartOfDay;
   /** When they joined: who asked first. */
   joinedAt: number;
+  /** The number they called from (caller ID): where the call back goes. */
+  phone?: string;
+  /** The booking they made on another day, to move here if a time opens; none when they only want to hear. */
+  moveBookingId?: string;
   status: "waiting" | "offered" | "booked" | "declined";
 }
 
@@ -119,8 +123,12 @@ export class Calendar {
   }
 
   /** The tools one call's model gets, with that call's own state. */
-  session(): BookingSession {
-    return new BookingSession(this, this.nextId("call"));
+  session(opts: { callerPhone?: string } = {}): BookingSession {
+    return new BookingSession(this, this.nextId("call"), opts.callerPhone);
+  }
+
+  booking(id: string): Booking | undefined {
+    return this.bookings.get(id);
   }
 
   /** Called on every cancellation, with the time it gave back. */
@@ -212,8 +220,8 @@ export class Calendar {
     return booking;
   }
 
-  joinWaitlist(name: string, service: Service, date: string, partOfDay: PartOfDay): WaitlistEntry {
-    const entry: WaitlistEntry = { id: this.nextId("wl"), name, service, date, partOfDay, joinedAt: this.now().getTime(), status: "waiting" };
+  joinWaitlist(name: string, service: Service, date: string, partOfDay: PartOfDay, extra: { phone?: string; moveBookingId?: string } = {}): WaitlistEntry {
+    const entry: WaitlistEntry = { id: this.nextId("wl"), name, service, date, partOfDay, joinedAt: this.now().getTime(), status: "waiting", ...extra };
     this.waiting.push(entry);
     return entry;
   }
@@ -237,12 +245,16 @@ export class BookingSession implements ToolBox {
   private readonly offered = new Set<string>();
   /** Booking ids find_booking returned on this call: the only ones cancel_booking accepts. */
   private readonly found = new Set<string>();
+  /** Booking ids confirm_booking made on this call: the only ones join_waitlist may move. */
+  private readonly made = new Set<string>();
   private held: { name: string; service: Service; date: string; time: string } | null = null;
 
   constructor(
     private readonly calendar: Calendar,
     /** This call, as the holder of what it holds. */
     readonly id: string,
+    /** The caller's number (caller ID), when the call came on a phone line. */
+    private readonly callerPhone?: string,
   ) {}
 
   /** The call ended: whatever it still holds is free again. */
@@ -276,8 +288,15 @@ export class BookingSession implements ToolBox {
       ),
       fn(
         "join_waitlist",
-        "Put the caller on the waitlist for a day that is full: if a time opens that day, we call them and offer it. Only when they asked for that.",
-        { service: serviceParam, date: dateParam, partOfDay: partOfDayParam, name: { type: "string", description: "The caller's name." }, callbackOk: { type: "boolean", enum: [true], description: "The caller agreed to be called back." } },
+        "Put the caller on the waitlist for a day that is full: if a time opens that day, we call them and offer it (or offer to move the booking they made on another day). Only when they asked for that.",
+        {
+          service: serviceParam,
+          date: dateParam,
+          partOfDay: partOfDayParam,
+          name: { type: "string", description: "The caller's name." },
+          callbackOk: { type: "boolean", enum: [true], description: "The caller agreed to be called back." },
+          moveBookingId: { type: "string", description: "The bookingId from CONFIRMED on this call, when they booked another day and want to move to this one if a time opens." },
+        },
         ["service", "date", "name", "callbackOk"],
       ),
     ];
@@ -297,7 +316,7 @@ export class BookingSession implements ToolBox {
       case "cancel_booking":
         return this.cancelBooking(String(i.bookingId ?? ""), i.callerConfirmed === true);
       case "join_waitlist":
-        return this.joinWaitlist(String(i.service ?? ""), String(i.date ?? ""), (i.partOfDay as PartOfDay | undefined) ?? "any", String(i.name ?? "").trim(), i.callbackOk === true);
+        return this.joinWaitlist(String(i.service ?? ""), String(i.date ?? ""), (i.partOfDay as PartOfDay | undefined) ?? "any", String(i.name ?? "").trim(), i.callbackOk === true, typeof i.moveBookingId === "string" && i.moveBookingId ? i.moveBookingId : undefined);
       default:
         return { status: "ERROR", message: `unknown tool ${call.name}` };
     }
@@ -348,6 +367,7 @@ export class BookingSession implements ToolBox {
     if (!this.held) return { status: "NEEDS", missing: ["hold_slot"] };
     const h = this.held;
     const booking = this.calendar.book(this.id, h.name, h.service, h.date, h.time, "call");
+    this.made.add(booking.id);
     this.held = null;
     return { status: "CONFIRMED", bookingId: booking.id, name: h.name, service: h.service.id, date: h.date, weekday: weekdayName(h.date), time: h.time };
   }
@@ -369,16 +389,18 @@ export class BookingSession implements ToolBox {
     return { status: "CANCELLED", name: booking.name, service: booking.service.id, date: booking.date, weekday: weekdayName(booking.date), time: booking.time };
   }
 
-  private joinWaitlist(serviceId: string, date: string, partOfDay: PartOfDay, name: string, callbackOk: boolean): Record<string, unknown> {
+  private joinWaitlist(serviceId: string, date: string, partOfDay: PartOfDay, name: string, callbackOk: boolean, moveBookingId?: string): Record<string, unknown> {
     const service = serviceById(serviceId);
     if (!service) return { status: "ERROR", message: `unknown service; use one of ${BUSINESS.services.map((s) => s.id).join(", ")}` };
     const bad = checkDate(date, this.calendar.today().date);
     if (bad) return bad;
     const missing = [...(name ? [] : ["name"]), ...(callbackOk ? [] : ["callbackOk"])];
     if (missing.length) return { status: "NEEDS", missing };
-    const entry = this.calendar.joinWaitlist(name, service, date, partOfDay);
+    if (moveBookingId && !this.made.has(moveBookingId)) return { status: "ERROR", message: "unknown moveBookingId: only a booking confirm_booking made on this call" };
+    const entry = this.calendar.joinWaitlist(name, service, date, partOfDay, { phone: this.callerPhone, moveBookingId });
     const position = this.calendar.waitlist().filter((e) => e.status === "waiting" && e.date === date).indexOf(entry) + 1;
-    return { status: "WAITLISTED", name, service: service.id, date, weekday: weekdayName(date), partOfDay, position };
+    const moving = moveBookingId ? this.calendar.booking(moveBookingId) : undefined;
+    return { status: "WAITLISTED", name, service: service.id, date, weekday: weekdayName(date), partOfDay, position, ...(moving ? { ifATimeOpens: `we call and offer to move the ${weekdayName(moving.date)} ${moving.time} booking` } : {}) };
   }
 }
 

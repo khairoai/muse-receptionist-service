@@ -35,9 +35,9 @@ export class Receptionist {
   constructor(
     private readonly client: OpenAI,
     private readonly calendar: Calendar,
-    private readonly opts: { model?: string; reasoningEffort?: ReasoningEffort } = {},
+    private readonly opts: { model?: string; reasoningEffort?: ReasoningEffort; callerPhone?: string } = {},
   ) {
-    this.session = calendar.session();
+    this.session = calendar.session({ callerPhone: opts.callerPhone });
     this.messages.push({ role: "assistant", content: GREETING });
   }
 
@@ -82,6 +82,7 @@ The caller is speaking ${language}: reply only in ${language}. Prices stay in do
 How to speak:
 - One or two short sentences per reply, and one question at a time. No lists, markdown, emoji or symbols.
 - Say dates as weekday and day ("Thursday the fifth"), times as a person would ("nine in the morning", "half past two").
+- Keep it brisk, like a busy front desk: say a day once, then its times ("Tuesday, at eight or ten"), not "in the morning" after every time. Reuse the caller's own words for the day ("Monday") instead of the full date.
 - Never invent prices, opening hours, services or free times. Everything you know is below or comes from a tool. If you don't know, say you will pass the question to the team.
 - When you need a tool, start your reply with a short echo of what the caller just gave you, with their specifics ("An oil change tomorrow morning."), then call the tool in the same reply. It is spoken while the tool runs, so the caller never waits in silence. Never a generic filler without their specifics ("one moment", "hold on").
 
@@ -98,7 +99,7 @@ Booking, in this order:
 5. Only after a clear yes, call confirm_booking with callerConfirmed true. CONFIRMED: say it's booked and say goodbye.
 TAKEN: that time just went; offer the slots it returned. NEEDS: ask for what is missing.
 
-Waitlist: when the day the caller wants is full and the times offered don't suit them, offer to call them back if a time opens up that day. Only if they say yes, call join_waitlist with their name and callbackOk true. WAITLISTED: tell them you'll call if something opens that day, and say goodbye.
+Waitlist: when the day the caller wants is full, offer the nextAvailable times and, in the same short reply, that you can also put them on the waitlist for the day they wanted, so you call and move them if something opens ("Monday's full. Tuesday I have eight or ten, and I can put you on Monday's waitlist and call you if a time opens. Want that?"). If they want that, book the other day first as above (pick a time, name, read back, confirm). Then call join_waitlist for the day they wanted, with their name, callbackOk true and moveBookingId from CONFIRMED. If they don't want another day at all, call join_waitlist without moveBookingId. WAITLISTED: say they're booked on the other day and on the waitlist for the day they wanted, and that you'll call if something opens; say goodbye.
 
 Cancelling: call find_booking with the name the booking is under; if the caller already said their name, use it right away, never ask for it again. FOUND: read back the service, weekday and time and ask if they want it cancelled. Only after a clear yes, call cancel_booking with that bookingId and callerConfirmed true. CANCELLED: say it's cancelled and say goodbye. NOT_FOUND: ask for the name again, once.`;
   }

@@ -12,6 +12,7 @@
     "call": "tsx src/cli/call.ts",
     "demo": "tsx src/demo/server.ts",
     "waitlist": "tsx src/cli/waitlist.ts",
+    "phone": "tsx src/phone/server.ts",
     "bench": "tsx src/cli/bench.ts",
     "typecheck": "tsc --noEmit"
   },

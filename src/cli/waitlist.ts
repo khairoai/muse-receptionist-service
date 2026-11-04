@@ -87,15 +87,15 @@ async function inbound(receptionist: Receptionist, caller: Speaker): Promise<voi
   receptionist.hangUp();
 }
 
-/** An outbound call: the person picks up with "Hello?", then the agent and the person take turns. */
+/** An outbound call: the agent asks for the person, then they take turns. */
 async function outbound(call: OfferCall, person: Speaker): Promise<void> {
-  let heard = "Hello?";
-  for (let i = 0; i < MAX_TURNS; i++) {
+  console.log(`  agent › ${call.greeting}`);
+  let heard = await person(call.greeting);
+  for (let i = 0; i < MAX_TURNS && heard !== HANG_UP; i++) {
     console.log(`  them › ${heard}`);
     const turn: TurnResult = await call.reply(heard);
     printTurn(turn);
     heard = await person(turn.spoken);
-    if (heard === HANG_UP) break;
   }
   console.log(dim(`  (hung up: ${call.outcome ?? "no answer"})`));
 }
